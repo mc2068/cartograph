@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
+/* Every colour is one light-dark() pair, resolved by color-scheme on the root.
+   With no data-theme the root follows the system. The theme control forces a
+   side by writing data-theme, and that wins over the system setting.
+
+   Style with these tokens, not Tailwind's dark: variant. That variant reads the
+   system setting directly and ignores a forced theme.
+
+   The app- prefix keeps them clear of the custom properties Clerk sets on its
+   own elements (--accent, --border). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+  --app-background: light-dark(#ffffff, #0e0e10);
+  --app-surface: light-dark(#f4f4f5, #1a1a1d);
+  --app-border: light-dark(#e4e4e7, #2a2a2e);
+  --app-foreground: light-dark(#18181b, #e8e8ea);
+  --app-muted: light-dark(#71717a, #9b9ba3);
+  /* The one accent: selection and anything interactive. Same value in both
+     modes so white text on it stays readable. */
+  --app-accent: #2563eb;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-accent: var(--app-accent);
+  --color-background: var(--app-background);
+  --color-surface: var(--app-surface);
+  --color-border: var(--app-border);
+  --color-foreground: var(--app-foreground);
+  --color-muted: var(--app-muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--app-background);
+  color: var(--app-foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 13px;
 }
