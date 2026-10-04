@@ -53,10 +53,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       data-theme={theme === "system" ? undefined : theme}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      {/* The body is exactly the viewport and main scrolls inside it, so a page
+          that fills the space under the header has a real height to fill. */}
+      <body className="flex h-full flex-col">
         <ClerkProvider appearance={clerkAppearance}>
           <Header theme={theme} />
-          <main className="flex flex-1 flex-col">{children}</main>
+          <main className="flex min-h-0 flex-1 flex-col overflow-auto">
+            {children}
+          </main>
         </ClerkProvider>
       </body>
     </html>
