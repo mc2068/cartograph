@@ -10,6 +10,9 @@
     "parse": "node parser/cli.ts",
     "test": "node --test \"parser/*.test.ts\" \"lib/*.test.ts\""
   },
+  "engines": {
+    "node": "^22.18.0 || >=23.6.0"
+  },
   "dependencies": {
     "@clerk/nextjs": "^7.9.10",
     "@dagrejs/dagre": "^3.1.1",

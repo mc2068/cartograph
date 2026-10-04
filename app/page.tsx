@@ -3,7 +3,7 @@ import { listAnalyses } from "../lib/analyses";
 
 // Rendered on the server, so it is fixed to UTC rather than the server's own
 // timezone, and says so.
-function formatStarted(timestamp: string) {
+function formatCreated(timestamp: string) {
   return `${new Date(timestamp).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
               <tr className="border-b border-border text-muted">
                 <th className="py-1 pr-4 font-normal">Repository</th>
                 <th className="py-1 pr-4 font-normal">State</th>
-                <th className="py-1 font-normal">Started</th>
+                <th className="py-1 font-normal">Created</th>
               </tr>
             </thead>
             <tbody>
@@ -54,7 +54,7 @@ export default async function DashboardPage() {
                   </td>
                   <td className="py-1 pr-4">{analysis.status}</td>
                   <td className="py-1 tabular-nums text-muted">
-                    {formatStarted(analysis.created_at)}
+                    {formatCreated(analysis.created_at)}
                   </td>
                 </tr>
               ))}

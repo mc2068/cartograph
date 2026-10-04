@@ -42,10 +42,10 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "analyses_project_id_fkey"
-            columns: ["project_id"]
+            columns: ["project_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "projects"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -77,24 +77,24 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "edges_analysis_id_fkey"
-            columns: ["analysis_id"]
+            columns: ["analysis_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "analyses"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "edges_source_file_id_fkey"
-            columns: ["source_file_id"]
+            columns: ["source_file_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "files"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "edges_target_file_id_fkey"
-            columns: ["target_file_id"]
+            columns: ["target_file_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "files"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -132,10 +132,10 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "explanations_analysis_id_fkey"
-            columns: ["analysis_id"]
+            columns: ["analysis_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "analyses"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -164,10 +164,10 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "file_roles_file_id_fkey"
-            columns: ["file_id"]
-            isOneToOne: true
+            columns: ["file_id", "organization_id"]
+            isOneToOne: false
             referencedRelation: "files"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -202,10 +202,10 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "files_analysis_id_fkey"
-            columns: ["analysis_id"]
+            columns: ["analysis_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "analyses"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -234,10 +234,10 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "insights_analysis_id_fkey"
-            columns: ["analysis_id"]
+            columns: ["analysis_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "analyses"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -293,17 +293,17 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "routes_analysis_id_fkey"
-            columns: ["analysis_id"]
+            columns: ["analysis_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "analyses"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "routes_file_id_fkey"
-            columns: ["file_id"]
+            columns: ["file_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "files"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
