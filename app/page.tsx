@@ -1,6 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
+import { listAnalyses } from "../lib/analyses";
 
-export default async function WorkspacePage() {
+// Rendered on the server, so it is fixed to UTC rather than the server's own
+// timezone, and says so.
+function formatCreated(timestamp: string) {
+  return `${new Date(timestamp).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+export default async function DashboardPage() {
   // Both values come off the session token, so they are in the first HTML
   // response and nothing here calls Clerk.
   const { orgId, sessionClaims } = await auth();
@@ -14,16 +21,52 @@ export default async function WorkspacePage() {
     );
   }
 
+  const result = await listAnalyses();
+
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 p-3 text-xs">
-      {orgName ? (
+    <div className="flex flex-col gap-3 p-3 text-xs">
+      <div className="flex items-baseline gap-3">
+        <h1 className="font-medium">Analyses</h1>
+        {orgName ? <span>{orgName}</span> : null}
+        <span className="font-mono text-muted">{orgId}</span>
+      </div>
+
+      {!result.ok ? (
+        // A failed read must not look like a team with no analyses.
+        <p role="alert">Could not load analyses: {result.message}</p>
+      ) : result.analyses.length === 0 ? (
+        <p className="text-muted">This organization has no analyses yet.</p>
+      ) : (
         <>
-          <dt className="text-muted">Organization</dt>
-          <dd className="font-medium">{orgName}</dd>
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-border text-muted">
+                <th className="py-1 pr-4 font-normal">Repository</th>
+                <th className="py-1 pr-4 font-normal">State</th>
+                <th className="py-1 font-normal">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.analyses.map((analysis) => (
+                <tr key={analysis.id} className="border-b border-border">
+                  <td className="py-1 pr-4 font-mono">
+                    {analysis.project.repo_owner}/{analysis.project.repo_name}
+                  </td>
+                  <td className="py-1 pr-4">{analysis.status}</td>
+                  <td className="py-1 tabular-nums text-muted">
+                    {formatCreated(analysis.created_at)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {result.total > result.analyses.length ? (
+            <p className="text-muted">
+              Showing the latest {result.analyses.length} of {result.total}.
+            </p>
+          ) : null}
         </>
-      ) : null}
-      <dt className="text-muted">Organization ID</dt>
-      <dd className="font-mono">{orgId}</dd>
-    </dl>
+      )}
+    </div>
   );
 }

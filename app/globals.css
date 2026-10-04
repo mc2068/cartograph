@@ -19,6 +19,10 @@
   /* The one accent: selection and anything interactive. Same value in both
      modes so white text on it stays readable. */
   --app-accent: #2563eb;
+  /* Direction, the one other thing that earns colour: what flows into the
+     selection and what flows out of it. */
+  --app-incoming: light-dark(#15803d, #4ade80);
+  --app-outgoing: light-dark(#b45309, #fbbf24);
 }
 
 :root[data-theme="light"] {
@@ -36,6 +40,8 @@
   --color-border: var(--app-border);
   --color-foreground: var(--app-foreground);
   --color-muted: var(--app-muted);
+  --color-incoming: var(--app-incoming);
+  --color-outgoing: var(--app-outgoing);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -45,4 +51,35 @@ body {
   color: var(--app-foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   font-size: 13px;
+}
+
+/* React Flow ships its own light and dark palettes, switched by a class it
+   sets itself. Pointing its variables at the tokens instead keeps the canvas on
+   the same theme control as everything else. */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-attribution-background-color: transparent;
+  --xy-controls-button-background-color: var(--app-background);
+  --xy-controls-button-background-color-hover: var(--app-surface);
+  --xy-controls-button-color: var(--app-foreground);
+  --xy-controls-button-color-hover: var(--app-foreground);
+  --xy-controls-button-border-color: var(--app-border);
+  --xy-controls-box-shadow: none;
+}
+
+/* The doubled class outranks React Flow's own stylesheet, which loads after
+   this one. */
+.react-flow .react-flow__controls {
+  border: 1px solid var(--app-border);
+}
+
+/* A handle is only where a line attaches. Nothing on this map is connected by
+   hand, so it has no size and nothing to see. */
+.react-flow .react-flow__handle {
+  min-width: 0;
+  min-height: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  background: transparent;
 }
