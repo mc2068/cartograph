@@ -25,7 +25,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { fold } from "../lib/fold";
 import {
   filesText,
   HEADER_HEIGHT,
@@ -38,13 +37,12 @@ import {
 import {
   endKey,
   fileHandle,
-  litBy,
-  sceneOf,
   type Box,
   type Lit,
+  type Scene,
   type Selection,
 } from "../lib/scene";
-import type { Edge, FileNode } from "../parser/types.ts";
+import { FOCUS, POINTED } from "./marks";
 
 const MIN_ZOOM = 0.2;
 /** A fit never enlarges past the size the labels were set at. */
@@ -57,11 +55,19 @@ type BoxNode = Node<{ box: Box }, "folder" | "panel">;
 // React Flow measures a node again whenever its object is replaced, and its
 // lines vanish until it has, so a click that only changes what is highlighted
 // must leave the node objects alone.
-type MapState = {
+//
+// The state itself is held above the canvas, because the detail pane reads and
+// changes the same selection.
+export type MapState = {
   selection: Selection | null;
   lit: Lit | null;
+  /** The place the pointer is on, here or through the detail pane, as an end key. */
+  pointed: string | null;
   toggle: (folder: string) => void;
   selectFile: (path: string) => void;
+  /** Takes an end key, or null when the pointer leaves. */
+  point: (end: string | null) => void;
+  clear: () => void;
 };
 
 const MapContext = createContext<MapState | null>(null);
@@ -73,13 +79,12 @@ function useMap(): MapState {
 }
 
 const DIM = "opacity-25";
-const FOCUS =
-  "cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
 
 function FolderNode({ data: { box } }: NodeProps<BoxNode>) {
-  const { selection, lit, toggle } = useMap();
+  const { selection, lit, pointed, toggle, point } = useMap();
   const selected = selection?.kind === "folder" && selection.id === box.id;
-  const dim = lit !== null && !lit.ends.has(endKey({ box: box.id, handle: null }));
+  const end = endKey({ box: box.id, handle: null });
+  const dim = lit !== null && !lit.ends.has(end);
 
   return (
     <>
@@ -88,9 +93,11 @@ function FolderNode({ data: { box } }: NodeProps<BoxNode>) {
         type="button"
         aria-expanded={false}
         onClick={() => toggle(box.id)}
+        onMouseEnter={() => point(end)}
+        onMouseLeave={() => point(null)}
         className={`flex size-full flex-col justify-center rounded-sm border bg-background px-2 text-left ${FOCUS} ${
           selected ? "border-accent ring-1 ring-accent" : "border-border"
-        } ${dim ? DIM : ""}`}
+        } ${dim ? DIM : ""} ${pointed === end ? POINTED : ""}`}
       >
         <span className="truncate font-mono text-xs leading-4">{box.label}</span>
         <span className="truncate text-[10px] leading-[14px] text-muted">{filesText(box)}</span>
@@ -101,10 +108,10 @@ function FolderNode({ data: { box } }: NodeProps<BoxNode>) {
 }
 
 function PanelNode({ id, data: { box } }: NodeProps<BoxNode>) {
-  const { selection, lit, toggle, selectFile } = useMap();
+  const { selection, lit, pointed, toggle, selectFile, point } = useMap();
   const selected = selection?.kind === "folder" && selection.id === box.id;
-  const isLit = (path: string) =>
-    lit === null || lit.ends.has(endKey({ box: box.id, handle: fileHandle(path) }));
+  const endOf = (path: string) => endKey({ box: box.id, handle: fileHandle(path) });
+  const isLit = (path: string) => lit === null || lit.ends.has(endOf(path));
   // A panel with nothing lit in it dims as one object. A panel with something
   // lit keeps its frame and header, so the lit rows still say where they are.
   const anyLit = box.rows.some((row) => isLit(row.path));
@@ -124,6 +131,22 @@ function PanelNode({ id, data: { box } }: NodeProps<BoxNode>) {
   useEffect(() => {
     updateNodeInternals(id);
   }, [id, scrollTop, updateNodeInternals]);
+
+  // A file selected from the detail pane can be a row this list has not
+  // scrolled to. Keyed on which row it is, so the list moves when the
+  // selection does and is left alone when it is scrolled by hand afterwards.
+  const list = useRef<HTMLDivElement>(null);
+  const selectedRow =
+    selection?.kind === "file" ? box.rows.findIndex((row) => row.path === selection.path) : -1;
+  useEffect(() => {
+    const element = list.current;
+    if (element === null || selectedRow === -1) return;
+    const top = selectedRow * ROW_HEIGHT;
+    if (top < element.scrollTop) element.scrollTop = top;
+    else if (top + ROW_HEIGHT > element.scrollTop + listHeight) {
+      element.scrollTop = top + ROW_HEIGHT - listHeight;
+    }
+  }, [selectedRow, listHeight]);
 
   return (
     <div
@@ -147,6 +170,7 @@ function PanelNode({ id, data: { box } }: NodeProps<BoxNode>) {
       </button>
       <div className="relative shrink-0" style={{ height: listHeight }}>
         <div
+          ref={list}
           onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           // nowheel and nopan are React Flow's: over this list the wheel
           // scrolls the rows instead of zooming the map, and dragging the
@@ -165,10 +189,14 @@ function PanelNode({ id, data: { box } }: NodeProps<BoxNode>) {
                 type="button"
                 aria-pressed={rowSelected}
                 onClick={() => selectFile(row.path)}
+                onMouseEnter={() => point(endOf(row.path))}
+                onMouseLeave={() => point(null)}
                 style={{ height: ROW_HEIGHT }}
                 className={`block w-full truncate px-2 text-left font-mono text-xs ${FOCUS} ${
                   rowSelected ? "bg-accent text-white" : ""
-                } ${anyLit && !isLit(row.path) ? DIM : ""}`}
+                } ${anyLit && !isLit(row.path) ? DIM : ""} ${
+                  pointed === endOf(row.path) ? POINTED : ""
+                }`}
               >
                 {row.label}
               </button>
@@ -226,17 +254,16 @@ const TONES: Record<Tone, { stroke: string; opacity: number; strokeWidth: number
   outgoing: { stroke: "var(--app-outgoing)", opacity: 1, strokeWidth: 1.5 },
 };
 
-function Flow({ files, edges }: { files: FileNode[]; edges: Edge[] }) {
-  const folders = useMemo(() => fold(files).folders, [files]);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
-  const [selection, setSelection] = useState<Selection | null>(null);
+type CanvasProps = {
+  scene: Scene;
+  /** Which folders are open. The refit is keyed on this set being replaced. */
+  expanded: ReadonlySet<string>;
+  state: MapState;
+};
 
-  const scene = useMemo(() => sceneOf(folders, edges, expanded), [folders, edges, expanded]);
+function Flow({ scene, expanded, state }: CanvasProps) {
   const layout = useMemo(() => layoutOf(scene), [scene]);
-  const lit = useMemo(
-    () => (selection === null ? null : litBy(selection, folders, edges, scene)),
-    [selection, folders, edges, scene],
-  );
+  const { lit } = state;
 
   const nodes = useMemo(
     () =>
@@ -287,25 +314,6 @@ function Flow({ files, edges }: { files: FileNode[]; edges: Edge[] }) {
     });
   }, [scene, lit]);
 
-  const state = useMemo(
-    (): MapState => ({
-      selection,
-      lit,
-      // Opening or closing a folder also selects it, so one click on a node is
-      // one rule: this folder is what you are looking at now.
-      toggle: (folder) => {
-        setExpanded((current) => {
-          const next = new Set(current);
-          if (!next.delete(folder)) next.add(folder);
-          return next;
-        });
-        setSelection({ kind: "folder", id: folder });
-      },
-      selectFile: (path) => setSelection({ kind: "file", path }),
-    }),
-    [selection, lit],
-  );
-
   // The refit reads the layout computed from the new expansion state, never
   // the nodes React Flow is still holding from before the click.
   //
@@ -346,7 +354,7 @@ function Flow({ files, edges }: { files: FileNode[]; edges: Edge[] }) {
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={false}
-        onPaneClick={() => setSelection(null)}
+        onPaneClick={state.clear}
       >
         <Controls showInteractive={false} />
       </ReactFlow>
@@ -354,11 +362,11 @@ function Flow({ files, edges }: { files: FileNode[]; edges: Edge[] }) {
   );
 }
 
-export function Canvas({ files, edges }: { files: FileNode[]; edges: Edge[] }) {
+export function Canvas(props: CanvasProps) {
   return (
     <div className="absolute inset-0">
       <ReactFlowProvider>
-        <Flow files={files} edges={edges} />
+        <Flow {...props} />
       </ReactFlowProvider>
     </div>
   );
