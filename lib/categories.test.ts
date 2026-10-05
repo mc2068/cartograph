@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { folderOf } from "../parser/paths.ts";
 import type { FileNode } from "../parser/types.ts";
-import { categoriesOf, typeOf } from "./categories.ts";
+import { categoriesOf, matchesOf, typeOf } from "./categories.ts";
 
 function file(path: string): FileNode {
   return { path, folder: folderOf(path), lines: 1, hash: "", role: null, fanIn: 0, fanOut: 0 };
@@ -32,4 +32,19 @@ test("there is one category per type, and the counts add up to the files", () =>
     { type: ".ts", count: 2 },
     { type: ".tsx", count: 1 },
   ]);
+});
+
+test("each folder counts its files of a type, and the counts add up to the category's", () => {
+  const folders = [
+    { id: "app", files: [file("app/a.tsx"), file("app/b.ts"), file("app/c.tsx")] },
+    { id: "lib", files: [file("lib/d.ts")] },
+  ];
+
+  assert.deepEqual(
+    matchesOf(folders, ".tsx"),
+    new Map([
+      ["app", 2],
+      ["lib", 0],
+    ]),
+  );
 });

@@ -1,5 +1,6 @@
 import { compareStrings } from "../parser/paths.ts";
 import type { FileNode } from "../parser/types.ts";
+import type { Folder } from "./fold.ts";
 
 /**
  * A file's type is the last extension of its name, read off the path, so
@@ -28,4 +29,18 @@ export function categoriesOf(files: readonly FileNode[]): Category[] {
   return [...counts]
     .map(([type, count]) => ({ type, count }))
     .sort((a, b) => compareStrings(a.type, b.type));
+}
+
+/**
+ * How many of each folder's files are of one type. Every folder is listed,
+ * including the ones with none, and the folders hold every file once, so the
+ * counts add up to the category's count in the rail.
+ */
+export function matchesOf(folders: readonly Folder[], type: string): Map<string, number> {
+  return new Map(
+    folders.map((folder) => [
+      folder.id,
+      folder.files.filter((file) => typeOf(file.path) === type).length,
+    ]),
+  );
 }

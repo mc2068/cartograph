@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { categoriesOf, typeOf } from "../lib/categories";
 import { neighboursOf, summaryOf, type Neighbours, type Summary } from "../lib/detail";
 import type { Folder } from "../lib/fold";
+import { insightsOf, SENTENCES, type Cycle, type Insights } from "../lib/insights";
+import { reach, type Direction } from "../lib/reach";
 import type { Selection } from "../lib/scene";
 import { fallbackAdapter } from "../parser/adapter.ts";
 import type { Edge, FileNode } from "../parser/types.ts";
@@ -118,6 +120,92 @@ function Facts({ rows }: { rows: { label: string; value: ReactNode; tone?: strin
   );
 }
 
+function CycleRows({ cycle }: { cycle: Cycle }) {
+  const [first] = cycle.loop;
+  return (
+    <li className="py-1">
+      {/* Each file imports the one under it, and the last row closes the loop,
+          so it can be walked by opening them in order. */}
+      <ol>
+        {cycle.loop.map((path) => (
+          <li key={path}>
+            <PathButton path={path} className="py-0.5" />
+          </li>
+        ))}
+      </ol>
+      {first === undefined ? null : (
+        <p className="flex gap-1 px-3 text-muted">
+          <span className="shrink-0">back to</span>
+          <span className="min-w-0 break-all font-mono">{first}</span>
+        </p>
+      )}
+      {cycle.files > cycle.loop.length ? (
+        <Note>{count(cycle.files, "file", "files")} in all reach each other through loops like this one.</Note>
+      ) : null}
+    </li>
+  );
+}
+
+// Explanatory first. Cycles and long files read closer to a verdict, so they
+// sit underneath, and the whole panel is closed until someone opens it.
+function InsightsPanel({
+  insights,
+  open,
+  onToggle,
+}: {
+  insights: Insights;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <section>
+      <h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+          className={`flex w-full items-baseline gap-1.5 border-b border-border px-3 py-2 text-left text-muted hover:bg-surface ${FOCUS}`}
+        >
+          <span aria-hidden className="w-2 shrink-0">
+            {open ? "▾" : "▸"}
+          </span>
+          <span>Insights</span>
+        </button>
+      </h3>
+      {open ? (
+        <>
+          <Section title={SENTENCES.unreached} total={insights.unreached.length}>
+            <PathList rows={insights.unreached.map((file) => ({ path: file.path }))} />
+          </Section>
+          <Section title={SENTENCES.heavilyImported} total={insights.heavilyImported.length}>
+            <PathList
+              rows={insights.heavilyImported.map((file) => ({
+                path: file.path,
+                note: <span className="shrink-0 tabular-nums text-incoming">{file.fanIn} in</span>,
+              }))}
+            />
+          </Section>
+          <Section title={SENTENCES.cycles} total={insights.cycles.length}>
+            <ul>
+              {insights.cycles.map((cycle) => (
+                <CycleRows key={cycle.loop.join("\n")} cycle={cycle} />
+              ))}
+            </ul>
+          </Section>
+          <Section title={SENTENCES.long} total={insights.long.length}>
+            <PathList
+              rows={insights.long.map((file) => ({
+                path: file.path,
+                note: <span className="shrink-0 tabular-nums text-muted">{file.lines}</span>,
+              }))}
+            />
+          </Section>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function RepositorySummary({ adapter, summary }: { adapter: string; summary: Summary }) {
   return (
     <>
@@ -165,7 +253,80 @@ function RepositorySummary({ adapter, summary }: { adapter: string; summary: Sum
   );
 }
 
-function FileStructure({ file, neighbours }: { file: FileNode; neighbours: Neighbours }) {
+const WALKS: Record<Direction, { label: string; tone: string; note: string }> = {
+  // What imports the file is what flows into it, so it takes the incoming colour.
+  dependents: {
+    label: "Blast radius",
+    tone: "text-incoming",
+    note: "What imports this file, then what imports those.",
+  },
+  dependencies: {
+    label: "Dependency chain",
+    tone: "text-outgoing",
+    note: "What this file imports, then what those import.",
+  },
+};
+
+const DIRECTIONS: readonly Direction[] = ["dependents", "dependencies"];
+
+function Walk({ edges, path }: { edges: Edge[]; path: string }) {
+  // Held per file, by a key on the path, so a new file starts with neither
+  // walk open rather than a long list pushing its imports down.
+  const [direction, setDirection] = useState<Direction | null>(null);
+  const levels = useMemo(
+    () => (direction === null ? [] : reach(edges, path, direction)),
+    [edges, path, direction],
+  );
+  const total = levels.reduce((sum, level) => sum + level.length, 0);
+
+  return (
+    <>
+      <div className="flex gap-2 border-b border-border px-3 py-2">
+        {DIRECTIONS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={direction === id}
+            onClick={() => setDirection(direction === id ? null : id)}
+            className={`rounded-sm border px-2 py-0.5 hover:bg-surface ${FOCUS} ${
+              direction === id ? "border-accent text-accent" : "border-border"
+            }`}
+          >
+            {WALKS[id].label}
+          </button>
+        ))}
+      </div>
+      {direction === null ? null : (
+        <Section title={WALKS[direction].label} total={total} tone={WALKS[direction].tone}>
+          <Note>{WALKS[direction].note}</Note>
+          {levels.length === 0 ? (
+            <Note>Nothing in this repository.</Note>
+          ) : (
+            levels.map((level, index) => (
+              <div key={index} className="pt-1">
+                <h4 className="flex items-baseline justify-between gap-2 px-3 text-muted">
+                  <span>{count(index + 1, "step", "steps")} away</span>
+                  <span className="tabular-nums">{level.length}</span>
+                </h4>
+                <PathList rows={level.map((reached) => ({ path: reached }))} />
+              </div>
+            ))
+          )}
+        </Section>
+      )}
+    </>
+  );
+}
+
+function FileStructure({
+  file,
+  neighbours,
+  edges,
+}: {
+  file: FileNode;
+  neighbours: Neighbours;
+  edges: Edge[];
+}) {
   const { imports, importedBy } = neighbours;
   return (
     <>
@@ -177,6 +338,7 @@ function FileStructure({ file, neighbours }: { file: FileNode; neighbours: Neigh
           { label: "Imported by", value: importedBy.length, tone: "text-incoming" },
         ]}
       />
+      <Walk key={file.path} edges={edges} path={file.path} />
       {/* Each total is the length of the list under it, so the two cannot differ. */}
       <Section title="Imports" total={imports.length} tone="text-outgoing">
         {imports.length === 0 ? (
@@ -233,6 +395,10 @@ export function Detail({
   onPoint: (path: string | null) => void;
 }) {
   const summary = useMemo(() => summaryOf(files, edges), [files, edges]);
+  const insights = useMemo(() => insightsOf(files, edges), [files, edges]);
+  // Held here, because the summary is unmounted whenever something is
+  // selected. Once opened it stays open until it is closed.
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const neighbours = useMemo(() => neighboursOf(files, edges), [files, edges]);
   const byPath = useMemo(() => new Map(files.map((file) => [file.path, file])), [files]);
 
@@ -288,7 +454,14 @@ export function Detail({
         ) : null}
       </header>
       {!selected ? (
-        <RepositorySummary adapter={adapter} summary={summary} />
+        <>
+          <RepositorySummary adapter={adapter} summary={summary} />
+          <InsightsPanel
+            insights={insights}
+            open={insightsOpen}
+            onToggle={() => setInsightsOpen((open) => !open)}
+          />
+        </>
       ) : (
         <div role="tabpanel">
           {tab === "explanation" ? (
@@ -297,6 +470,7 @@ export function Detail({
             <FileStructure
               file={file}
               neighbours={neighbours.get(file.path) ?? { imports: [], importedBy: [] }}
+              edges={edges}
             />
           ) : folder !== undefined ? (
             <FolderStructure folder={folder} />
