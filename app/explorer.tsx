@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { categoriesOf } from "../lib/categories";
+import { categoriesOf, matchesOf } from "../lib/categories";
 import { fold } from "../lib/fold";
 import { endKey, litBy, sceneOf, type Selection } from "../lib/scene";
 import type { Edge, FileNode } from "../parser/types.ts";
@@ -36,6 +36,11 @@ export function Explorer({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [selection, setSelection] = useState<Selection | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
+  const filter = useMemo(
+    () => (category === null ? null : { type: category, matches: matchesOf(folders, category) }),
+    [folders, category],
+  );
 
   const scene = useMemo(() => sceneOf(folders, edges, expanded), [folders, edges, expanded]);
   const lit = useMemo(
@@ -72,6 +77,7 @@ export function Explorer({
   const state: MapState = {
     selection,
     lit,
+    filter,
     pointed,
     // Opening or closing a folder also selects it, so one click on a node is
     // one rule: this folder is what you are looking at now.
@@ -90,7 +96,7 @@ export function Explorer({
 
   return (
     <Shell
-      rail={<Rail categories={categories} />}
+      rail={<Rail categories={categories} active={category} onPick={setCategory} />}
       map={<Canvas scene={scene} expanded={expanded} state={state} />}
       detail={
         <Detail

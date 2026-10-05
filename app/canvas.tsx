@@ -42,6 +42,7 @@ import {
   type Scene,
   type Selection,
 } from "../lib/scene";
+import { typeOf } from "../lib/categories";
 import { FOCUS, POINTED } from "./marks";
 
 const MIN_ZOOM = 0.2;
@@ -61,6 +62,11 @@ type BoxNode = Node<{ box: Box }, "folder" | "panel">;
 export type MapState = {
   selection: Selection | null;
   lit: Lit | null;
+  /**
+   * The file type picked in the rail, and how many of each folder's files are
+   * of it. Everything not of it is dimmed. Null when none is picked.
+   */
+  filter: { type: string; matches: ReadonlyMap<string, number> } | null;
   /** The place the pointer is on, here or through the detail pane, as an end key. */
   pointed: string | null;
   toggle: (folder: string) => void;
@@ -80,14 +86,35 @@ function useMap(): MapState {
 
 const DIM = "opacity-25";
 
+/**
+ * How many of a folder's files are of the picked type, sitting on its top
+ * edge. Outside the box's own text, so the layout, worked out before anything
+ * was picked, still fits and nothing moves when a category is.
+ */
+function Matched({ box, dim }: { box: Box; dim: boolean }) {
+  const { filter } = useMap();
+  const matched = filter?.matches.get(box.id);
+  if (filter === null || matched === undefined) return null;
+  return (
+    <span
+      className={`pointer-events-none absolute -top-2 right-1.5 rounded-sm border border-accent bg-background px-1 font-mono text-[10px] leading-[14px] tabular-nums text-accent ${
+        dim ? DIM : ""
+      }`}
+    >
+      {matched} {filter.type}
+    </span>
+  );
+}
+
 function FolderNode({ data: { box } }: NodeProps<BoxNode>) {
-  const { selection, lit, pointed, toggle, point } = useMap();
+  const { selection, lit, filter, pointed, toggle, point } = useMap();
   const selected = selection?.kind === "folder" && selection.id === box.id;
   const end = endKey({ box: box.id, handle: null });
-  const dim = lit !== null && !lit.ends.has(end);
+  const dim = (lit !== null && !lit.ends.has(end)) || filter?.matches.get(box.id) === 0;
 
   return (
     <>
+      <Matched box={box} dim={dim} />
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <button
         type="button"
@@ -108,10 +135,13 @@ function FolderNode({ data: { box } }: NodeProps<BoxNode>) {
 }
 
 function PanelNode({ id, data: { box } }: NodeProps<BoxNode>) {
-  const { selection, lit, pointed, toggle, selectFile, point } = useMap();
+  const { selection, lit, filter, pointed, toggle, selectFile, point } = useMap();
   const selected = selection?.kind === "folder" && selection.id === box.id;
   const endOf = (path: string) => endKey({ box: box.id, handle: fileHandle(path) });
-  const isLit = (path: string) => lit === null || lit.ends.has(endOf(path));
+  // A row stays at full strength only if neither the selection nor the
+  // picked category dims it.
+  const isLit = (path: string) =>
+    (lit === null || lit.ends.has(endOf(path))) && (filter === null || typeOf(path) === filter.type);
   // A panel with nothing lit in it dims as one object. A panel with something
   // lit keeps its frame and header, so the lit rows still say where they are.
   const anyLit = box.rows.some((row) => isLit(row.path));
@@ -239,6 +269,8 @@ function PanelNode({ id, data: { box } }: NodeProps<BoxNode>) {
           )}
         </div>
       ) : null}
+      {/* Inside the frame, so it already dims with the panel. */}
+      <Matched box={box} dim={false} />
     </div>
   );
 }
@@ -263,7 +295,26 @@ type CanvasProps = {
 
 function Flow({ scene, expanded, state }: CanvasProps) {
   const layout = useMemo(() => layoutOf(scene), [scene]);
-  const { lit } = state;
+  const { lit, filter } = state;
+
+  // The places on the map that hold a file of the picked type. A line stays
+  // at full strength only when both its ends are among them.
+  const filtered = useMemo(() => {
+    if (filter === null) return null;
+    const ends = new Set<string>();
+    for (const box of scene.boxes) {
+      if (!box.open) {
+        if ((filter.matches.get(box.id) ?? 0) > 0) ends.add(endKey({ box: box.id, handle: null }));
+        continue;
+      }
+      for (const row of box.rows) {
+        if (typeOf(row.path) === filter.type) {
+          ends.add(endKey({ box: box.id, handle: fileHandle(row.path) }));
+        }
+      }
+    }
+    return ends;
+  }, [scene, filter]);
 
   const nodes = useMemo(
     () =>
@@ -289,13 +340,15 @@ function Flow({ scene, expanded, state }: CanvasProps) {
       // The arrow points at what is imported, so a line ending on the
       // selection flows into it and a line starting there flows out.
       const tone: Tone =
-        lit === null
-          ? "rest"
-          : lit.selected.has(endKey(link.to))
-            ? "incoming"
-            : lit.selected.has(endKey(link.from))
-              ? "outgoing"
-              : "dim";
+        filtered !== null && !(filtered.has(endKey(link.from)) && filtered.has(endKey(link.to)))
+          ? "dim"
+          : lit === null
+            ? "rest"
+            : lit.selected.has(endKey(link.to))
+              ? "incoming"
+              : lit.selected.has(endKey(link.from))
+                ? "outgoing"
+                : "dim";
       return { link, tone };
     });
     // Dimmed lines first, so the ones that matter are painted over them.
@@ -312,7 +365,7 @@ function Flow({ scene, expanded, state }: CanvasProps) {
         markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
       };
     });
-  }, [scene, lit]);
+  }, [scene, lit, filtered]);
 
   // The refit reads the layout computed from the new expansion state, never
   // the nodes React Flow is still holding from before the click.
